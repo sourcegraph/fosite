@@ -213,6 +213,28 @@ func TestDoesClientWhiteListRedirect(t *testing.T) {
 			isError:  false,
 			expected: "https://google.com/?foo=bar%20foo+baz",
 		},
+		{
+			client:   &fosite.DefaultClient{RedirectURIs: []string{"http://localhost/callback"}},
+			url:      "http://localhost:9999/callback",
+			expected: "http://localhost:9999/callback",
+			isError:  false,
+		},
+		{
+			client:   &fosite.DefaultClient{RedirectURIs: []string{"http://localhost/callback"}},
+			url:      "http://localhost/callback",
+			expected: "http://localhost/callback",
+			isError:  false,
+		},
+		{
+			client:  &fosite.DefaultClient{RedirectURIs: []string{"http://127.0.0.1/callback"}},
+			url:     "http://localhost:9999/callback",
+			isError: true,
+		},
+		{
+			client:  &fosite.DefaultClient{RedirectURIs: []string{"http://localhost/callback"}},
+			url:     "http://127.0.0.1:9999/callback",
+			isError: true,
+		},
 	} {
 		redir, err := fosite.MatchRedirectURIWithClientRedirectURIs(c.url, c.client)
 		assert.Equal(t, c.isError, err != nil, "%d: %+v", k, c)

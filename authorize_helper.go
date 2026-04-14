@@ -141,8 +141,11 @@ func isMatchingAsLoopback(requested *url.URL, registeredURI string) bool {
 	return false
 }
 
-// Check if address is either an IPv4 loopback or an IPv6 loopback.
+// Check if address is either an IPv4 loopback, an IPv6 loopback, or localhost.
 func isLoopbackAddress(hostname string) bool {
+	if hostname == "localhost" {
+		return true
+	}
 	return net.ParseIP(hostname).IsLoopback()
 }
 
