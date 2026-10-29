@@ -146,10 +146,6 @@ func (c *Handler) HandleTokenEndpointRequest(ctx context.Context, request fosite
 		return errorsx.WithStack(fosite.ErrServerError.WithWrap(err).WithDebug(err.Error()))
 	}
 
-	if err := c.Storage.DeletePKCERequestSession(ctx, signature); err != nil {
-		return errorsx.WithStack(fosite.ErrServerError.WithWrap(err).WithDebug(err.Error()))
-	}
-
 	challenge := pkceRequest.GetRequestForm().Get("code_challenge")
 	method := pkceRequest.GetRequestForm().Get("code_challenge_method")
 	client := pkceRequest.GetClient()
@@ -230,6 +226,28 @@ func (c *Handler) HandleTokenEndpointRequest(ctx context.Context, request fosite
 }
 
 func (c *Handler) PopulateTokenEndpointResponse(ctx context.Context, requester fosite.AccessRequester, responder fosite.AccessResponder) error {
+	if !c.CanHandleTokenEndpointRequest(ctx, requester) {
+		return errorsx.WithStack(fosite.ErrUnknownRequest)
+	}
+	if requester.GetRequestForm().Get("code_verifier") == "" {
+		// A confidential client may legitimately authorize without PKCE.
+		return nil
+	}
+
+	// Keep the challenge until the authorization-code handler has invalidated
+	// the code and committed issuance. Even a valid verifier can be followed by
+	// a failure that leaves the code redeemable. As at the authorize endpoint,
+	// this handler must run after the authorization-code handler.
+	if responder.GetAccessToken() == "" {
+		return errorsx.WithStack(fosite.ErrServerError.WithDebug("The PKCE handler must be loaded after the authorize code handler."))
+	}
+
+	code := requester.GetRequestForm().Get("code")
+	signature := c.AuthorizeCodeStrategy.AuthorizeCodeSignature(ctx, code)
+	if err := c.Storage.DeletePKCERequestSession(ctx, signature); err != nil {
+		return errorsx.WithStack(fosite.ErrServerError.WithWrap(err).WithDebug(err.Error()))
+	}
+
 	return nil
 }
 
