@@ -10,12 +10,21 @@ import (
 
 	"github.com/ory/fosite/handler/oauth2"
 
-	"github.com/go-jose/go-jose/v3"
-	"github.com/go-jose/go-jose/v3/jwt"
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 
 	"github.com/ory/fosite"
 	"github.com/ory/x/errorsx"
 )
+
+// jwtAllAllowed pins the JWT algorithms accepted when parsing untrusted
+// client assertions (go-jose v4 requires an explicit allowlist).
+var jwtAllAllowed = []jose.SignatureAlgorithm{
+	jose.RS256, jose.RS384, jose.RS512, jose.HS256, jose.HS384, jose.HS512,
+	jose.PS256, jose.PS384, jose.PS512,
+	jose.ES256, jose.ES384, jose.ES512,
+	jose.EdDSA,
+}
 
 // #nosec:gosec G101 - False Positive
 const grantTypeJWTBearer = "urn:ietf:params:oauth:grant-type:jwt-bearer"
@@ -51,7 +60,7 @@ func (c *Handler) HandleTokenEndpointRequest(ctx context.Context, request fosite
 		return errorsx.WithStack(fosite.ErrInvalidRequest.WithHintf("The assertion request parameter must be set when using grant_type of '%s'.", grantTypeJWTBearer))
 	}
 
-	token, err := jwt.ParseSigned(assertion)
+	token, err := jwt.ParseSigned(assertion, jwtAllAllowed)
 	if err != nil {
 		return errorsx.WithStack(fosite.ErrInvalidGrant.
 			WithHint("Unable to parse JSON Web Token passed in \"assertion\" request parameter.").

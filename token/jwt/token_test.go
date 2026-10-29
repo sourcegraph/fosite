@@ -7,6 +7,8 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"strings"
@@ -15,8 +17,8 @@ import (
 
 	"github.com/ory/fosite/internal/gen"
 
-	"github.com/go-jose/go-jose/v3"
-	"github.com/go-jose/go-jose/v3/jwt"
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -54,10 +56,15 @@ func TestUnsignedToken(t *testing.T) {
 			parts := strings.Split(rawToken, ".")
 			require.Len(t, parts, 3)
 			require.Empty(t, parts[2])
-			tk, err := jwt.ParseSigned(rawToken)
+			// go-jose v4 refuses alg=none at parse time, so the "typ" header is
+			// asserted by decoding the header segment directly.
+			headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
 			require.NoError(t, err)
-			require.Len(t, tk.Headers, 1)
-			require.Equal(t, tc.expectedType, tk.Headers[0].ExtraHeaders[jose.HeaderKey("typ")])
+			var header map[string]any
+			require.NoError(t, json.Unmarshal(headerJSON, &header))
+			require.Equal(t, tc.expectedType, header["typ"])
+			_, err = jwt.ParseSigned(rawToken, []jose.SignatureAlgorithm{jose.RS256})
+			require.Error(t, err, "go-jose v4 must reject alg=none tokens")
 		})
 	}
 }
@@ -82,7 +89,7 @@ func TestJWTHeaders(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			rawToken := makeSampleTokenWithCustomHeaders(nil, jose.RS256, tc.jwtHeaders, gen.MustRSAKey())
-			tk, err := jwt.ParseSigned(rawToken)
+			tk, err := jwt.ParseSigned(rawToken, []jose.SignatureAlgorithm{jose.RS256})
 			require.NoError(t, err)
 			require.Len(t, tk.Headers, 1)
 			require.Equal(t, tk.Headers[0].Algorithm, "RS256")
@@ -346,7 +353,7 @@ func TestParser_Parse(t *testing.T) {
 		},
 		{
 			given: given{
-				name: "should pass, valid NONE signing method",
+				name: "should fail, NONE signing method rejected at parse time",
 				generate: &generate{
 					claims:     MapClaims{"foo": "bar"},
 					signingKey: UnsafeAllowNoneSignatureType,
@@ -355,9 +362,9 @@ func TestParser_Parse(t *testing.T) {
 			},
 			expected: expected{
 				keyFunc: noneKey,
-				claims:  MapClaims{"foo": "bar"},
-				valid:   true,
-				errors:  0,
+				claims:  nil,
+				valid:   false,
+				errors:  ValidationErrorMalformed,
 			},
 		},
 		{
@@ -371,9 +378,9 @@ func TestParser_Parse(t *testing.T) {
 			},
 			expected: expected{
 				keyFunc: defaultKeyFunc,
-				claims:  MapClaims{"foo": "bar"},
+				claims:  nil,
 				valid:   false,
-				errors:  ValidationErrorSignatureInvalid,
+				errors:  ValidationErrorMalformed,
 			},
 		},
 		{
@@ -387,9 +394,9 @@ func TestParser_Parse(t *testing.T) {
 			},
 			expected: expected{
 				keyFunc: publicECDSAKey,
-				claims:  MapClaims{"foo": "bar"},
+				claims:  nil,
 				valid:   false,
-				errors:  ValidationErrorSignatureInvalid,
+				errors:  ValidationErrorMalformed,
 			},
 		},
 	}
