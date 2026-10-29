@@ -16,7 +16,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/go-jose/go-jose/v3"
+	"github.com/go-jose/go-jose/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -175,16 +175,18 @@ func TestAuthorizeRequestParametersFromOpenIDConnectRequest(t *testing.T) {
 			expectForm: url.Values{"response_type": {"token"}, "response_mode": {"post_form"}, "scope": {"foo openid"}, "request_uri": {reqTS.URL}, "foo": {"bar"}, "baz": {"baz"}},
 		},
 		{
-			d:          "should pass when request object uses algorithm none",
-			form:       url.Values{"scope": {"openid"}, "request": {validNoneRequestObject}},
-			client:     &DefaultOpenIDConnectClient{JSONWebKeysURI: reqJWK.URL, RequestObjectSigningAlgorithm: "none"},
-			expectForm: url.Values{"state": {"some-state"}, "scope": {"foo openid"}, "request": {validNoneRequestObject}, "foo": {"bar"}, "baz": {"baz"}},
+			d:               "should fail when request object uses algorithm none (go-jose v4 rejects alg=none)",
+			form:            url.Values{"scope": {"openid"}, "request": {validNoneRequestObject}},
+			client:          &DefaultOpenIDConnectClient{JSONWebKeysURI: reqJWK.URL, RequestObjectSigningAlgorithm: "none"},
+			expectErr:       ErrInvalidRequestObject,
+			expectErrReason: "Unable to verify the request object's signature.",
 		},
 		{
-			d:          "should pass when request object uses algorithm none and the client did not explicitly allow any algorithm",
-			form:       url.Values{"scope": {"openid"}, "request": {validNoneRequestObject}},
-			client:     &DefaultOpenIDConnectClient{JSONWebKeysURI: reqJWK.URL},
-			expectForm: url.Values{"state": {"some-state"}, "scope": {"foo openid"}, "request": {validNoneRequestObject}, "foo": {"bar"}, "baz": {"baz"}},
+			d:               "should fail when request object uses algorithm none and the client did not explicitly allow any algorithm (go-jose v4 rejects alg=none)",
+			form:            url.Values{"scope": {"openid"}, "request": {validNoneRequestObject}},
+			client:          &DefaultOpenIDConnectClient{JSONWebKeysURI: reqJWK.URL},
+			expectErr:       ErrInvalidRequestObject,
+			expectErrReason: "Unable to verify the request object's signature.",
 		},
 	} {
 		t.Run(fmt.Sprintf("case=%d/description=%s", k, tc.d), func(t *testing.T) {
